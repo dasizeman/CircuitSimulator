@@ -1,7 +1,7 @@
 package main
 
 import (
-    //"fmt"
+    "fmt"
     "os"
     "bufio"
     "log"
@@ -14,13 +14,14 @@ type Component struct {
 
     name           string
     logic          func([]bool)[]bool
+    handler        func(*Component,[]string)
     outputs        []chan bool
     inputs         []*chan bool
     terminals      []*chan bool
     isTerminal     bool
 }
 
-func (comp *Component) runBasic() {
+func basicHandler(comp *Component, args []string) {
     // Loop forever
     for {
         // Get inputs
@@ -41,9 +42,17 @@ func (comp *Component) runBasic() {
     }
 }
 
-func (comp *Component) runAsSource(output bool) {
+func sourceHandler(comp *Component, args []string) {
     // A source just blasts the output value to fill the capacity of its output
     // channel (aka to all connected inputs)
+    argstr := args[0]
+    var output bool
+    if argstr == "0" {
+        output = false
+    } else {
+        output = true
+    }
+
     outchan := &(comp.outputs[0])
     for i := 0; i < cap(*outchan); i++ {
         (*outchan) <- output
@@ -51,7 +60,7 @@ func (comp *Component) runAsSource(output bool) {
 }
 
 
-func parseFile(filepath string) (components []Component, sources []*Component, terminalComponents []*Component) {
+func parseFile(filepath string) (components []*Component, terminalComponents []*Component) {
     // Try to open the file
     file, err := os.Open(filepath)
     if err != nil {
@@ -61,6 +70,7 @@ func parseFile(filepath string) (components []Component, sources []*Component, t
 
     // On first pass, create all of the components, set their names and logic
     // handlers
+    var baseComponents []Component
     var componentLines []string
     scanner := bufio.NewScanner(file)
     for scanner.Scan() {
@@ -76,34 +86,41 @@ func parseFile(filepath string) (components []Component, sources []*Component, t
         switch componentType {
         case "not":
             newComponent.logic = NOT
+            newComponent.handler = basicHandler
             numInputs = 1
             numOutputs = 1
 
         case "and":
             newComponent.logic = AND
+            newComponent.handler = basicHandler
             numInputs = 2
             numOutputs = 1
 
         case "or":
             newComponent.logic = OR
+            newComponent.handler = basicHandler
             numInputs = 2
             numOutputs = 1
 
         case "nand":
             newComponent.logic = NAND
+            newComponent.handler = basicHandler
             numInputs = 2
             numOutputs = 1
 
         case "nor":
             newComponent.logic = NOR
+            newComponent.handler = basicHandler
             numInputs = 2
             numOutputs = 1
 
         case "xor":
             newComponent.logic = XOR
+            newComponent.handler = basicHandler
             numInputs = 2
             numOutputs = 1
         case "source":
+            newComponent.handler = sourceHandler
             numInputs = 0
             numOutputs = 1
 
@@ -114,31 +131,25 @@ func parseFile(filepath string) (components []Component, sources []*Component, t
         newComponent.inputs         = make([]*chan bool, numInputs)
         newComponent.outputs        = make([]chan bool, numOutputs)
 
-        components = append(components, newComponent)
+        baseComponents = append(baseComponents, newComponent)
         componentLines = append(componentLines, line)
 
-        if componentType == "source" {
-            sources = append(sources, &components[len(components)-1])
-        }
+        thisComponentPtr := &baseComponents[len(baseComponents)-1]
+        components = append(components,thisComponentPtr)
     }
 
     // Do another pass to populate and "connect" the components
 
     for idx,line := range(componentLines) {
-        parseComponent(line, &components, idx)
-        if components[idx].isTerminal {
-            terminalComponents = append(terminalComponents, &components[idx])
+        parseComponent(line, &baseComponents, idx)
+        if baseComponents[idx].isTerminal {
+            terminalComponents = append(terminalComponents, &baseComponents[idx])
         }
     }
 
     if len(components) == 0 {
         log.Fatal("No components specified")
     }
-
-    if len(sources) == 0 {
-        log.Fatal("No sources specified")
-    }
-
 
     return
 }
@@ -153,7 +164,7 @@ func parseComponent(line string, components *[]Component, componentIdx int) {
 
     tokens := strings.Split(line, " ")
     if strings.ToLower(tokens[1]) != "out" {
-        log.Fatal("A non-source component must specify at least one output")
+        log.Fatalf("Component %d: A component must specify at least one output", componentIdx)
     }
 
     // Swallow the first "out" token.  We will then be two tokens in
@@ -231,7 +242,7 @@ func NOT(in []bool) (out []bool) {
 }
 
 func AND(in []bool) (out []bool) {
-    out[0] = (in[0] && in[1])
+    out = append(out, (in[0] && in[1]))
     return
 }
 
@@ -256,5 +267,64 @@ func XOR(in []bool) (out []bool) {
 }
 
 func main() {
+    scanner := bufio.NewScanner(os.Stdin)
+    fmt.Printf("Enter the path to your circuit file:\n")
+    scanner.Scan()
+    path := scanner.Text()
+
+    components, terminalComponents := parseFile(path)
+
+    fmt.Printf("Parsed file sucessfully.\n")
+    fmt.Printf("Found:\nComponents: %d\nTerminals: %d\n",
+        len(components), len(terminalComponents))
+
+    fmt.Printf("Enter source values:\n")
+
+    // Kick off components
+    for i,_ := range(components) {
+        componentPtr := components[i]
+
+        switch componentPtr.name {
+
+        case "source":
+            scanner.Scan()
+            input := scanner.Text()
+            for input != "0" && input != "1" {
+                fmt.Printf("Please enter 0 or 1.\n")
+                scanner.Scan()
+                input = scanner.Text()
+            }
+
+            argSlice := []string{input}
+
+            fmt.Printf("Starting source routine\n")
+            go componentPtr.handler(componentPtr, argSlice)
+
+        default:
+            fmt.Printf("Starting component routine\n")
+            go componentPtr.handler(componentPtr,nil)
+
+        }
+    }
+
+    // Receive from all terminal channels
+    fmt.Printf("Outputs:\n")
+    for i,_ := range(terminalComponents) {
+        chanPtrs := (*terminalComponents[i]).terminals
+        for j,_ := range(chanPtrs) {
+            chanPtr := chanPtrs[j]
+            val := <-(*chanPtr)
+            var outstr string
+            if val {
+                outstr = "1"
+            } else {
+                outstr = "0"
+            }
+
+            fmt.Printf("[%d-%d] %s\n",i,j,outstr)
+
+        }
+    }
 }
+
 
