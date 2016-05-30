@@ -1,0 +1,34 @@
+// Result outputs must be listed MSB to LSB
+// ------- Bit 3 -----
+// 0 :Carry output
+or out res
+// 1 : Sum output, Cin on 1
+xor out res
+// 2
+and out 0 0
+// 3
+and out 0 1
+// 4 : A and B inputs go into this xor
+xor out 2 0 1 0
+// 5
+source A1 out 3 0 4 0
+// 6
+source B1 out 3 1 4 1
+// ------- Bit 2 -----
+// 0 [7] :Carry output
+or out 2 1 1 1
+// 1 [8] : Sum output, Cin on 1
+xor out res
+// 2 [9]
+and out 7 0
+// 3 [10]
+and out 7 1
+// 4 [11] : A and B inputs go into this xor
+xor out 9 0 8 0
+// 5 [12]
+source A0 out 10 0 11 0
+// 6 [13]
+source B0 out 10 1 11 1
+// ------- Bit 1 -----
+// ------- Bit 0 -----
+source Cin out 9 1 8 1

@@ -12,6 +12,7 @@ import (
 
 type Component struct {
 
+    typeName       string
     name           string
     logic          func([]bool)[]bool
     handler        func(*Component,int)
@@ -84,7 +85,7 @@ func parseFile(filepath string) (components         []Component,
         componentType := strings.ToLower(strings.Split(line," ")[0])
 
         newComponent := Component{}
-        newComponent.name = componentType
+        newComponent.typeName = componentType
         numInputs := 0
         numOutputs := 0
 
@@ -131,7 +132,7 @@ func parseFile(filepath string) (components         []Component,
             numOutputs = 1
 
         default:
-            log.Fatalf("Unrecognized component name: %s", componentType)
+            log.Fatalf("Unrecognized component type name: %s", componentType)
         }
 
         newComponent.inputs         = make([]*chan bool, numInputs)
@@ -166,12 +167,23 @@ func parseComponent(line string, components []Component, componentIdx int) {
     numConnections := 0
 
     tokens := strings.Split(line, " ")
-    if strings.ToLower(tokens[1]) != "out" {
+
+    if (len(tokens) < 3) {
+        log.Fatalf("Component %d: Invalid component specification", componentIdx)
+    }
+
+    tokenIdx := 1
+    firstOutIdx := 1
+    if components[componentIdx].typeName == "source" {
+        firstOutIdx++
+        components[componentIdx].name = tokens[tokenIdx]
+    }
+
+    if strings.ToLower(tokens[firstOutIdx]) != "out" {
         log.Fatalf("Component %d: A component must specify at least one output", componentIdx)
     }
 
-    // Swallow the first "out" token.  We will then be two tokens in
-    tokenIdx := 2
+    tokenIdx += firstOutIdx
     for tokenIdx < len(tokens) {
         token := strings.ToLower(tokens[tokenIdx])
 
@@ -264,22 +276,22 @@ func AND(in []bool) (out []bool) {
 }
 
 func OR(in []bool) (out []bool) {
-    out[0] = (in[0] || in[1])
+    out = append(out, (in[0] || in[1]))
     return
 }
 
 func NAND(in []bool) (out []bool) {
-    out[0] = !AND(in)[0]
+    out = append(out,!AND(in)[0])
     return
 }
 
 func NOR(in []bool) (out []bool) {
-    out[0] = !OR(in)[0]
+    out = append(out, !OR(in)[0])
     return
 }
 
 func XOR(in []bool) (out []bool) {
-    out[0] = !(in[0] == in[1])
+    out = append(out, !(in[0] == in[1]))
     return
 }
 
@@ -299,10 +311,10 @@ func main() {
     for i,_ := range(components) {
         componentPtr := &components[i]
 
-        switch componentPtr.name {
+        switch componentPtr.typeName {
 
         case "source":
-            fmt.Printf("[%d] Source value: ", i)
+            fmt.Printf("[%s] Source value: ", componentPtr.name)
             scanner.Scan()
             input := scanner.Text()
             for input != "0" && input != "1" {
@@ -313,11 +325,11 @@ func main() {
 
             intval, _ := strconv.Atoi(input)
 
-            fmt.Printf("Starting source routine\n")
+            //fmt.Printf("Starting source routine\n")
             go componentPtr.handler(componentPtr, intval)
 
         default:
-            fmt.Printf("Starting component routine\n")
+            //fmt.Printf("Starting component routine\n")
             go componentPtr.handler(componentPtr,0)
 
         }
@@ -333,17 +345,6 @@ func main() {
                 chanPtr := chanPtrs[j]
                 val := <-(*chanPtr)
                 outValues = append(outValues, val)
-                /*
-                var outstr string
-                if val {
-                    outstr = "1"
-                } else {
-                    outstr = "0"
-                }
-
-                fmt.Printf("[%d-%d] %s\n",i,j,outstr)
-                */
-
             }
         }
         outNum := parseOutputs(outValues)
