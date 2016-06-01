@@ -12,13 +12,35 @@ import (
 
 type Component struct {
 
+    // A string for the type of component
     typeName       string
+
+    // A unique name for the component
     name           string
+
+    // A function to perorm gate logic on the inputs and produce and output
     logic          func([]bool)[]bool
+
+    // A function with handling code unique to the component
     handler        func(*Component,int)
+
+    // Channels to send output values to
     outputs        []chan bool
+
+    // A channel to notify components reading from outputs that all fanned
+    // outputs have gotten their value
+    fanSyncOut     []chan bool
+
+    // A channel to wait on after taking a value from an input
+    fanSyncIn     []*chan bool
+
+    // Channels to recieve input values from
     inputs         []*chan bool
+
+    // Outputs that should be read as results
     terminals      []*chan bool
+
+    // Does this component contain any terminal outputs
     isTerminal     bool
 }
 
@@ -137,6 +159,8 @@ func parseFile(filepath string) (components         []Component,
 
         newComponent.inputs         = make([]*chan bool, numInputs)
         newComponent.outputs        = make([]chan bool, numOutputs)
+        newComponent.fanSyncIn      = make([]*chan bool, numInputs)
+        newComponent.fanSyncOut     = make([]chan bool,  numOutputs)
 
         components = append(components, newComponent)
         componentLines = append(componentLines, line)
@@ -164,6 +188,7 @@ func parseComponent(line string, components []Component, componentIdx int) {
 
     outputIdx := 0
     currentOutput := &(comp.outputs[outputIdx])
+    currentOutputFanSync := &(comp.fanSyncOut[outputIdx])
     numConnections := 0
 
     tokens := strings.Split(line, " ")
@@ -190,6 +215,7 @@ func parseComponent(line string, components []Component, componentIdx int) {
         // We have reached the connection spec for another output
         if token == "out" {
             *(currentOutput) = make(chan bool, numConnections)
+            *(currentOutputFanSync) = make(chan bool)
             numConnections = 0
 
             outputIdx++
@@ -197,6 +223,7 @@ func parseComponent(line string, components []Component, componentIdx int) {
                 log.Fatalf("Component %d: Too many outputs specified", componentIdx)
             }
             currentOutput = &(comp.outputs[outputIdx])
+            currentOutputFanSync = &(comp.fanSyncOut[outputIdx])
         }
 
         // "res" specifies the value on this output is a result
@@ -239,6 +266,7 @@ func parseComponent(line string, components []Component, componentIdx int) {
             // Finally we can make this connection by setting the appropriate
             // component's input channel pointer
             components[compIdx].inputs[inputIdx] = currentOutput
+            components[compIdx].fanSyncIn[inputIdx] = currentOutputFanSync
 
             numConnections++
         }
@@ -248,6 +276,7 @@ func parseComponent(line string, components []Component, componentIdx int) {
 
     // Update info for the final output
     *(currentOutput) = make(chan bool, numConnections)
+    *(currentOutputFanSync) = make(chan bool)
 
 }
 
