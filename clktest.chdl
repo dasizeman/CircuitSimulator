@@ -1,0 +1,6 @@
+// Clock drive a D flip flop to flip flop
+dff 0 out res out 0 1
+dff 1 out res out 1 1
+dff 0 out res out 2 1
+dff 1 out res out 3 1
+clk out 0 0 1 0 2 0 3 0

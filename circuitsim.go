@@ -356,16 +356,36 @@ func parseOutputs (bools []bool) (result int) {
     return
 }
 
-func readBinaryInputAsInt(scanner *bufio.Scanner) (res int) {
-    scanner.Scan()
-    input := scanner.Text()
-    for input != "0" && input != "1" {
-        fmt.Printf("Please enter 0 or 1.\n")
-        scanner.Scan()
-        input = scanner.Text()
-    }
+func getInitialValue(scanner *bufio.Scanner, name string, prompt string, binary bool) (res int) {
+    val, err := strconv.Atoi(name)
+    if err == nil {
+        res = val
 
-    res, _ = strconv.Atoi(input)
+    } else {
+        fmt.Printf("[%s] %s ",name, prompt)
+        var checker func(string)bool
+        if binary {
+            checker = func(input string)bool {
+                return (input == "0" || input == "1")
+            }
+
+        } else {
+            checker = func(input string)bool {
+                _,err := strconv.Atoi(input)
+                return (err == nil)
+            }
+
+        }
+        scanner.Scan()
+        input := scanner.Text()
+        for !checker(input) {
+            fmt.Printf("Invalid entry, try again.\n")
+            scanner.Scan()
+            input = scanner.Text()
+        }
+
+        res, _ = strconv.Atoi(input)
+    }
     return
 }
 
@@ -425,24 +445,15 @@ func main() {
         switch componentPtr.typeName {
 
         case "source":
-            fmt.Printf("[%s] Source value: ", componentPtr.name)
-            arg = readBinaryInputAsInt(scanner)
-
+            arg = getInitialValue(scanner,componentPtr.name, "Source value:", true)
             //fmt.Printf("Starting source routine\n")
 
         case "dff":
-            fmt.Printf("[%s] DFF value: ", componentPtr.name)
-            arg = readBinaryInputAsInt(scanner)
+            arg = getInitialValue(scanner,componentPtr.name, "Initial value:",true)
 
         case "clk":
             clk = componentPtr
-            fmt.Printf("Clock frequency: ")
-            scanner.Scan()
-            hertz, err := strconv.Atoi(scanner.Text())
-            if err != nil {
-                log.Fatal(err)
-            }
-            arg = hertz
+            arg = getInitialValue(scanner, componentPtr.name, "Clock frequency:",false)
 
         default:
             //fmt.Printf("Starting component routine\n")
@@ -454,7 +465,8 @@ func main() {
     }
 
     // Receive from all terminal channels
-    lastValue := 0
+    lastValue := -1
+    terminator := "\n"
     for {
         var outValues []bool
         for i,_ := range(terminalComponents) {
@@ -467,8 +479,17 @@ func main() {
         }
         outNum := parseOutputs(outValues)
         if outNum != lastValue {
-            fmt.Printf("[Output] %08b\r", outNum)
+            fmt.Printf("[Output] %08b%s", outNum, terminator)
             lastValue = outNum
+
+            // If we don't have a clock, the output isn't going to change again
+            // so we can exit
+            if clk == nil {
+                break
+            }
+
+            terminator = "\r"
+
         }
 
         // If we have a clock, notify it that the circuit propogation is
@@ -478,5 +499,3 @@ func main() {
         }
     }
 }
-
-
