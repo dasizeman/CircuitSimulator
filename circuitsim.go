@@ -20,6 +20,7 @@ type Component struct {
     inputs         []*chan bool
     terminals      []*chan bool
     isTerminal     bool
+    clkOuts        []chan bool
 }
 
 func basicHandler(comp *Component, arg int) {
@@ -57,6 +58,34 @@ func sourceHandler(comp *Component, arg int) {
         outchan := &(comp.outputs[0])
         for i := 0; i < cap(*outchan); i++ {
             (*outchan) <- output
+        }
+    }
+}
+
+func dFlipFlopHandler(comp *Component, arg int) {
+    var Q bool
+    if arg == 1 {
+        Q = true
+    } else {
+        Q = false
+    }
+    for {
+        // Wait for a clock signal (input 0 by convention)
+        clk := <-*(comp.inputs[0])
+
+        // If rising edge, sample D input (input 1 by convention)
+        if clk {
+            Q = <-*(comp.inputs[1])
+        }
+
+        // Output Q and !Q (outputs 0 and 1)
+        invals := []bool{Q}
+        outvals := comp.logic(invals)
+        for i,_ := range(comp.outputs) {
+            outchan := &(comp.outputs[i])
+            for j := 0; j < cap(*outchan); j++ {
+                (*outchan) <- outvals[i]
+            }
         }
     }
 }
@@ -130,6 +159,12 @@ func parseFile(filepath string) (components         []Component,
             newComponent.handler = sourceHandler
             numInputs = 0
             numOutputs = 1
+        case "dff":
+            newComponent.logic = DFF
+            newComponent.handler = dFlipFlopHandler
+            numInputs = 2
+            numOutputs = 2
+
 
         default:
             log.Fatalf("Unrecognized component type name: %s", componentType)
@@ -162,6 +197,8 @@ func parseComponent(line string, components []Component, componentIdx int) {
 
     comp := &components[componentIdx]
 
+    isClk := (comp.typeName == "clk")
+
     outputIdx := 0
     currentOutput := &(comp.outputs[outputIdx])
     numConnections := 0
@@ -189,13 +226,14 @@ func parseComponent(line string, components []Component, componentIdx int) {
 
         // We have reached the connection spec for another output
         if token == "out" {
-            *(currentOutput) = make(chan bool, numConnections)
-            numConnections = 0
-
             outputIdx++
             if outputIdx > len(comp.outputs) - 1 {
                 log.Fatalf("Component %d: Too many outputs specified", componentIdx)
             }
+
+            *(currentOutput) = make(chan bool, numConnections)
+            numConnections = 0
+
             currentOutput = &(comp.outputs[outputIdx])
         }
 
@@ -208,20 +246,20 @@ func parseComponent(line string, components []Component, componentIdx int) {
         } else {
             // Check if we have two numbers, representing component and
             // component input indices.  First check if this is a valid number
-            compIdx, err := strconv.Atoi(token)
+            outputCompIdx, err := strconv.Atoi(token)
             if err != nil {
                 log.Fatalf("Component %d: Invalid connection component index specification %s (must be a number)",
                     componentIdx, token)
             }
-            if compIdx >= len(components) {
-                log.Fatalf("Component %d: Connection component index %d out of bounds", componentIdx, compIdx)
+            if outputCompIdx >= len(components) {
+                log.Fatalf("Component %d: Connection component index %d out of bounds", componentIdx, outputCompIdx)
             }
 
 
             // Next check if we have an input index
             if (tokenIdx + 1) >= len(tokens) {
                 log.Fatalf("Component %d: no input number specified for connection component index %d",
-                    componentIdx, compIdx)
+                    componentIdx, outputCompIdx)
             }
 
             // ... and if its valid
@@ -229,16 +267,27 @@ func parseComponent(line string, components []Component, componentIdx int) {
             inputIdx, err := strconv.Atoi(tokens[tokenIdx])
             if err != nil {
                 log.Fatalf("Component %d: invalid input sprecification for connection component index %d (must be a number)",
-                componentIdx, compIdx)
+                componentIdx, outputCompIdx)
             }
 
-            if inputIdx >= len(components[compIdx].inputs) {
+            if inputIdx >= len(components[outputCompIdx].inputs) {
                 log.Fatalf("Component %d: input index %d out of bounds", componentIdx, inputIdx)
             }
 
             // Finally we can make this connection by setting the appropriate
             // component's input channel pointer
-            components[compIdx].inputs[inputIdx] = currentOutput
+
+            // A clock is special, it only really has one output, and this uses
+            // unbuffered channels to ensure synchronization
+            var outputToConnect *chan bool
+            if isClk {
+                comp.clkOuts = append(comp.clkOuts, make(chan bool))
+                outputToConnect = &comp.clkOuts[len(comp.clkOuts)-1]
+            } else {
+                outputToConnect = currentOutput
+            }
+
+            components[outputCompIdx].inputs[inputIdx] = outputToConnect
 
             numConnections++
         }
@@ -292,6 +341,11 @@ func NOR(in []bool) (out []bool) {
 
 func XOR(in []bool) (out []bool) {
     out = append(out, !(in[0] == in[1]))
+    return
+}
+func DFF(in []bool) (out []bool) {
+    out = append(out, in[0])
+    out = append(out, !in[0])
     return
 }
 
