@@ -120,3 +120,4 @@ source 1 out 52 0 53 0
 // 6 [55]
 dff 0 out 52 1 53 1
 source 0 out 51 1 50 1
+clk out 6 0 13 0 20 0 27 0 34 0 41 0 48 0 55 0
