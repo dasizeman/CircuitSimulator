@@ -7,6 +7,7 @@ import (
     "log"
     "strings"
     "strconv"
+    "time"
 )
 
 
@@ -20,7 +21,10 @@ type Component struct {
     inputs         []*chan bool
     terminals      []*chan bool
     isTerminal     bool
+
+    // Clock specific
     clkOuts        []chan bool
+    clkSync        chan bool
 }
 
 func basicHandler(comp *Component, arg int) {
@@ -63,7 +67,7 @@ func sourceHandler(comp *Component, arg int) {
 }
 
 func dFlipFlopHandler(comp *Component, arg int) {
-    var Q bool
+    var Q, init bool = true, true
     if arg == 1 {
         Q = true
     } else {
@@ -73,12 +77,20 @@ func dFlipFlopHandler(comp *Component, arg int) {
         // Wait for a clock signal (input 0 by convention)
         clk := <-*(comp.inputs[0])
 
-        // If rising edge, sample D input (input 1 by convention)
-        if clk {
-            Q = <-*(comp.inputs[1])
-        }
 
-        // Output Q and !Q (outputs 0 and 1)
+        // Don't try get an input on the first cycle, just output the initial
+        // value
+        if !init {
+            // Output Q and !Q (outputs 0 and 1)
+            // If rising edge, sample D input (input 1 by convention)
+            if clk {
+                Q = <-*(comp.inputs[1])
+            } else {
+                <-*(comp.inputs[1])
+            }
+        }
+        init = false
+
         invals := []bool{Q}
         outvals := comp.logic(invals)
         for i,_ := range(comp.outputs) {
@@ -87,6 +99,28 @@ func dFlipFlopHandler(comp *Component, arg int) {
                 (*outchan) <- outvals[i]
             }
         }
+
+    }
+}
+
+func clkHandler(comp *Component, arg int) {
+    clk := true
+
+    // Hz
+    interval := time.Second / time.Duration(arg)
+
+    for {
+        // Send clock signals
+        for i,_ := range(comp.clkOuts) {
+            comp.clkOuts[i] <- clk
+        }
+        clk = !clk
+
+        // Wait to be notified that the last propogation is complete
+        <-comp.clkSync
+
+        // Wait for the delay based on the frequency
+        <-time.After(interval)
     }
 }
 
@@ -164,6 +198,10 @@ func parseFile(filepath string) (components         []Component,
             newComponent.handler = dFlipFlopHandler
             numInputs = 2
             numOutputs = 2
+        case "clk":
+            newComponent.handler = clkHandler
+            numInputs = 0
+            numOutputs = 1
 
 
         default:
@@ -172,6 +210,7 @@ func parseFile(filepath string) (components         []Component,
 
         newComponent.inputs         = make([]*chan bool, numInputs)
         newComponent.outputs        = make([]chan bool, numOutputs)
+        newComponent.clkSync        = make(chan bool)
 
         components = append(components, newComponent)
         componentLines = append(componentLines, line)
@@ -211,7 +250,8 @@ func parseComponent(line string, components []Component, componentIdx int) {
 
     tokenIdx := 1
     firstOutIdx := 1
-    if components[componentIdx].typeName == "source" {
+    if components[componentIdx].typeName == "source" ||
+        components[componentIdx].typeName == "dff"{
         firstOutIdx++
         components[componentIdx].name = tokens[tokenIdx]
     }
@@ -235,6 +275,8 @@ func parseComponent(line string, components []Component, componentIdx int) {
             numConnections = 0
 
             currentOutput = &(comp.outputs[outputIdx])
+            tokenIdx++
+            continue
         }
 
         // "res" specifies the value on this output is a result
@@ -314,6 +356,19 @@ func parseOutputs (bools []bool) (result int) {
     return
 }
 
+func readBinaryInputAsInt(scanner *bufio.Scanner) (res int) {
+    scanner.Scan()
+    input := scanner.Text()
+    for input != "0" && input != "1" {
+        fmt.Printf("Please enter 0 or 1.\n")
+        scanner.Scan()
+        input = scanner.Text()
+    }
+
+    res, _ = strconv.Atoi(input)
+    return
+}
+
 func NOT(in []bool) (out []bool) {
     out[0] = !in[0]
     return
@@ -361,32 +416,41 @@ func main() {
     fmt.Printf("Found:\nComponents: %d\nTerminals: %d\n",
         len(components), len(terminalComponents))
 
+    var clk *Component
     // Kick off components
     for i,_ := range(components) {
         componentPtr := &components[i]
 
+        var arg int
         switch componentPtr.typeName {
 
         case "source":
             fmt.Printf("[%s] Source value: ", componentPtr.name)
-            scanner.Scan()
-            input := scanner.Text()
-            for input != "0" && input != "1" {
-                fmt.Printf("Please enter 0 or 1.\n")
-                scanner.Scan()
-                input = scanner.Text()
-            }
-
-            intval, _ := strconv.Atoi(input)
+            arg = readBinaryInputAsInt(scanner)
 
             //fmt.Printf("Starting source routine\n")
-            go componentPtr.handler(componentPtr, intval)
+
+        case "dff":
+            fmt.Printf("[%s] DFF value: ", componentPtr.name)
+            arg = readBinaryInputAsInt(scanner)
+
+        case "clk":
+            clk = componentPtr
+            fmt.Printf("Clock frequency: ")
+            scanner.Scan()
+            hertz, err := strconv.Atoi(scanner.Text())
+            if err != nil {
+                log.Fatal(err)
+            }
+            arg = hertz
 
         default:
             //fmt.Printf("Starting component routine\n")
-            go componentPtr.handler(componentPtr,0)
+            arg = 0
 
         }
+
+        go componentPtr.handler(componentPtr,arg)
     }
 
     // Receive from all terminal channels
@@ -403,8 +467,14 @@ func main() {
         }
         outNum := parseOutputs(outValues)
         if outNum != lastValue {
-            fmt.Printf("%b\n", outNum)
+            fmt.Printf("[Output] %08b\r", outNum)
             lastValue = outNum
+        }
+
+        // If we have a clock, notify it that the circuit propogation is
+        // complete
+        if clk != nil {
+            clk.clkSync <- true
         }
     }
 }
