@@ -1,0 +1,122 @@
+// Result outputs must be listed MSB to LSB
+// ------- Bit 7 -----
+// 0 :Carry output
+or out res
+// 1 : Sum output, Cin on 1
+xor out res
+// 2
+and out 0 0
+// 3
+and out 0 1
+// 4 : A and B inputs go into this xor
+xor out 2 0 1 0
+// 5
+source A7 out 3 0 4 0
+// 6
+source B7 out 3 1 4 1
+// ------- Bit 6 -----
+// 0 [7] :Carry output
+or out 2 1 1 1
+// 1 [8] : Sum output, Cin on 1
+xor out res
+// 2 [9]
+and out 7 0
+// 3 [10]
+and out 7 1
+// 4 [11] : A and B inputs go into this xor
+xor out 9 0 8 0
+// 5 [12]
+source A6 out 10 0 11 0
+// 6 [13]
+source B6 out 10 1 11 1
+// ------- Bit 5 -----
+// 0 [14] :Carry output
+or out 9 1 8 1
+// 1 [15]: Sum output, Cin on 1
+xor out res
+// 2 [16]
+and out 14 0
+// 3 [17]
+and out 14 1
+// 4 [18] : A and B inputs go into this xor
+xor out 16 0 15 0
+// 5 [19]
+source A5 out 17 0 18 0
+// 6 [20]
+source B5 out 17 1 18 1
+// ------- Bit 4 -----
+// 0 [21] :Carry output
+or out 16 1 15 1
+// 1 [22] : Sum output, Cin on 1
+xor out res
+// 2 [23]
+and out 21 0
+// 3 [24]
+and out 21 1
+// 4 [25] : A and B inputs go into this xor
+xor out 23 0 22 0
+// 5 [26]
+source A4 out 24 0 25 0
+// 6 [27]
+source B4 out 24 1 25 1
+// ------- Bit 3 -----
+// 0 [28] : Carry output
+or out 23 1 22 1
+// 1 [29] : Sum output, Cin on 1
+xor out res
+// 2 [30]
+and out 28 0
+// 3 [31]
+and out 28 1
+// 4 [32] : A and B inputs go into this xor
+xor out 30 0 29 0
+// 5 [33]
+source A3 out 31 0 32 0
+// 6 [34]
+source B3 out 31 1 32 1
+// ------- Bit 2 -----
+// 0 [35] :Carry output
+or out 30 1 29 1
+// 1 [36] : Sum output, Cin on 1
+xor out res
+// 2 [37]
+and out 35 0
+// 3 [38]
+and out 35 1
+// 4 [39] : A and B inputs go into this xor
+xor out 37 0 36 0
+// 5 [40]
+source A2 out 38 0 39 0
+// 6 [41]
+source B2 out 38 1 39 1
+// ------- Bit 1 -----
+// 0 [42] :Carry output
+or out 37 1 36 1
+// 1 [43]: Sum output, Cin on 1
+xor out res
+// 2 [44]
+and out 42 0
+// 3 [45]
+and out 42 1
+// 4 [46] : A and B inputs go into this xor
+xor out 44 0 43 0
+// 5 [47]
+source A1 out 45 0 46 0
+// 6 [48]
+source B1 out 45 1 46 1
+// ------- Bit 0 -----
+// 0 [49] :Carry output
+or out 44 1 43 1
+// 1 [50] : Sum output, Cin on 1
+xor out res
+// 2 [51]
+and out 49 0
+// 3 [52]
+and out 49 1
+// 4 [53]: A and B inputs go into this xor
+xor out 51 0 50 0
+// 5 [54]
+source A0 out 52 0 53 0
+// 6 [55]
+source B0 out 52 1 53 1
+source Cin out 51 1 50 1
