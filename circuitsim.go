@@ -106,8 +106,8 @@ func dFlipFlopHandler(comp *Component, arg int) {
 func clkHandler(comp *Component, arg int) {
     clk := true
 
-    // Hz
-    interval := time.Second / time.Duration(arg)
+    // Input in Hz, this duration is actually for half a wavelength
+    interval := time.Second / (2*time.Duration(arg))
 
     for {
         // Send clock signals
@@ -437,6 +437,8 @@ func main() {
         len(components), len(terminalComponents))
 
     var clk *Component
+    numPulses := 0
+    pulseCount := 0
     // Kick off components
     for i,_ := range(components) {
         componentPtr := &components[i]
@@ -446,7 +448,6 @@ func main() {
 
         case "source":
             arg = getInitialValue(scanner,componentPtr.name, "Source value:", true)
-            //fmt.Printf("Starting source routine\n")
 
         case "dff":
             arg = getInitialValue(scanner,componentPtr.name, "Initial value:",true)
@@ -454,9 +455,9 @@ func main() {
         case "clk":
             clk = componentPtr
             arg = getInitialValue(scanner, componentPtr.name, "Clock frequency:",false)
+            numPulses = getInitialValue(scanner, "", "# of clock pulses to run:", false)
 
         default:
-            //fmt.Printf("Starting component routine\n")
             arg = 0
 
         }
@@ -488,14 +489,16 @@ func main() {
                 break
             }
 
-            terminator = "\r"
-
         }
 
         // If we have a clock, notify it that the circuit propogation is
         // complete
         if clk != nil {
             clk.clkSync <- true
+            pulseCount++
+            if pulseCount / 2 > numPulses {
+                break
+            }
         }
     }
 }
