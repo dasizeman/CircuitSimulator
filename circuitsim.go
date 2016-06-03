@@ -113,7 +113,7 @@ func clkHandler(comp *Component, arg int) {
 		}
 		clk = !clk
 
-		// Wait to be notified that the last propogation is complete
+		// Wait to be notified that the last propagation is complete
 		<-comp.clkSync
 
 		// Wait for the delay based on the frequency
@@ -350,25 +350,23 @@ func parseOutputs(bools []bool) (result int) {
 }
 
 func getInitialValue(scanner *bufio.Scanner, name string, prompt string, binary bool) (res int) {
-	val, err := strconv.Atoi(name)
-	if err == nil {
-		res = val
+        var checker func(string) bool
+        if binary {
+                checker = func(input string) bool {
+                        return (input == "0" || input == "1")
+                }
 
+        } else {
+                checker = func(input string) bool {
+                        _, err := strconv.Atoi(input)
+                        return (err == nil)
+                }
+
+        }
+	if checker(name) {
+                res,_ = strconv.Atoi(name)
 	} else {
 		fmt.Printf("[%s] %s ", name, prompt)
-		var checker func(string) bool
-		if binary {
-			checker = func(input string) bool {
-				return (input == "0" || input == "1")
-			}
-
-		} else {
-			checker = func(input string) bool {
-				_, err := strconv.Atoi(input)
-				return (err == nil)
-			}
-
-		}
 		scanner.Scan()
 		input := scanner.Text()
 		for !checker(input) {
@@ -484,7 +482,7 @@ func main() {
 
 		}
 
-		// If we have a clock, notify it that the circuit propogation is
+		// If we have a clock, notify it that the circuit propagation is
 		// complete
 		if clk != nil {
 			clk.clkSync <- true
